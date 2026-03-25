@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SheetSync — Excel Importer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #18181f;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #f0f0f5;
+    --muted: #6b6b80;
+    --accent: #7c6aff;
+    --accent2: #a594ff;
+    --green: #22d47a;
+    --red: #ff4f4f;
+    --amber: #f5a623;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+  /* Layout */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); padding: 28px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; }
+  .main { margin-left: 220px; flex: 1; padding: 40px 48px; max-width: 960px; }
+
+  /* Sidebar */
+  .logo { padding: 0 24px 28px; border-bottom: 1px solid var(--border); }
+  .logo-mark { display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 16px; height: 16px; fill: white; }
+  .logo-name { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+  .logo-sub { font-size: 10px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+  .nav { padding: 20px 12px; flex: 1; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; color: var(--muted); cursor: pointer; transition: all 0.15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left; font-family: var(--sans); }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--accent2); background: rgba(124,106,255,0.12); }
+  .nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .nav-label { font-size: 10px; color: var(--muted); padding: 16px 12px 6px; font-family: var(--mono); letter-spacing: 0.08em; }
+  .step-badge { margin-left: auto; width: 18px; height: 18px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 9px; font-family: var(--mono); color: var(--muted); }
+  .step-badge.done { background: rgba(34,212,122,0.15); border-color: rgba(34,212,122,0.3); color: var(--green); }
+  .step-badge.active { background: rgba(124,106,255,0.2); border-color: var(--accent); color: var(--accent2); }
+  .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); }
+  .version { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+
+  /* Header */
+  .page-header { margin-bottom: 32px; }
+  .page-title { font-size: 26px; font-weight: 700; letter-spacing: -0.03em; }
+  .page-title span { color: var(--accent2); }
+  .page-desc { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 20px; animation: fadeUp 0.3s ease; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .card-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .card-icon.purple { background: rgba(124,106,255,0.15); }
+  .card-icon.green { background: rgba(34,212,122,0.12); }
+  .card-icon.amber { background: rgba(245,166,35,0.12); }
+  .card-icon svg { width: 16px; height: 16px; }
+  .card-title { font-size: 14px; font-weight: 600; }
+  .card-subtitle { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+
+  /* Drop Zone */
+  .drop-zone { border: 1.5px dashed rgba(124,106,255,0.3); border-radius: 12px; padding: 36px 24px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(124,106,255,0.05); }
+  .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .drop-icon-wrap { width: 48px; height: 48px; border-radius: 12px; background: rgba(124,106,255,0.1); border: 1px solid rgba(124,106,255,0.2); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+  .drop-icon-wrap svg { width: 22px; height: 22px; stroke: var(--accent2); fill: none; stroke-width: 1.5; }
+  .drop-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .drop-hint { font-size: 12px; color: var(--muted); }
+  .drop-types { display: flex; gap: 6px; justify-content: center; margin-top: 14px; }
+  .type-pill { font-size: 10px; font-family: var(--mono); padding: 3px 8px; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border2); color: var(--muted); }
+
+  /* File Info */
+  .file-info-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: rgba(34,212,122,0.06); border: 1px solid rgba(34,212,122,0.15); border-radius: 10px; margin-top: 14px; }
+  .file-info-bar svg { width: 18px; height: 18px; stroke: var(--green); fill: none; stroke-width: 1.5; flex-shrink: 0; }
+  .fi-name { font-size: 13px; font-weight: 600; }
+  .fi-meta { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+  .fi-remove { margin-left: auto; font-size: 11px; color: var(--red); cursor: pointer; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(255,79,79,0.2); background: none; font-family: var(--sans); transition: background 0.15s; }
+  .fi-remove:hover { background: rgba(255,79,79,0.08); }
+
+  /* Preview Table */
+  .table-outer { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); }
+  thead th { background: var(--surface2); color: var(--muted); padding: 10px 14px; text-align: left; font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 11px; letter-spacing: 0.04em; }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--text); white-space: nowrap; font-size: 11px; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--surface2); }
+  .more-rows { text-align: center; padding: 10px; font-size: 11px; color: var(--muted); font-family: var(--mono); border-top: 1px solid var(--border); }
+
+  /* Stats Row */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-val { font-size: 28px; font-weight: 700; font-family: var(--mono); letter-spacing: -0.03em; }
+  .stat-val.green { color: var(--green); }
+  .stat-val.red { color: var(--red); }
+  .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--mono); }
+
+  /* Mapper */
+  .mapper-header { display: grid; grid-template-columns: 1fr 28px 1fr; gap: 10px; margin-bottom: 8px; }
+  .mapper-col-label { font-size: 10px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.06em; }
+  .mapper-row { display: grid; grid-template-columns: 1fr 28px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .mapper-src { font-size: 12px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mapper-arrow { text-align: center; color: var(--muted); font-size: 12px; }
+  .mapper-row input { font-size: 12px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); width: 100%; outline: none; transition: border 0.15s; }
+  .mapper-row input:focus { border-color: var(--accent); }
+  .mapper-row input::placeholder { color: var(--muted); }
+
+  /* URL Input */
+  .field-label { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 8px; letter-spacing: 0.04em; }
+  .field-input { width: 100%; font-size: 13px; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: var(--mono); outline: none; transition: border 0.15s; margin-bottom: 16px; }
+  .field-input:focus { border-color: var(--accent); }
+  .field-input::placeholder { color: var(--muted); }
+  .field-row { display: grid; grid-template-columns: 1fr 200px; gap: 12px; }
+
+  /* Progress */
+  .progress-track { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin: 8px 0 4px; }
+  .progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--green)); transition: width 0.35s ease; width: 0%; }
+  .progress-labels { display: flex; justify-content: space-between; font-size: 11px; font-family: var(--mono); color: var(--muted); margin-bottom: 14px; }
+
+  /* Status */
+  .status-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 14px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-idle { background: var(--muted); }
+  .dot-running { background: var(--green); box-shadow: 0 0 8px var(--green); animation: blink 1.2s infinite; }
+  .dot-paused { background: var(--amber); }
+  .dot-done { background: var(--green); }
+  .dot-stopped { background: var(--red); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .status-text { font-size: 12px; font-family: var(--mono); color: var(--text); }
+  .status-pct { margin-left: auto; font-size: 13px; font-family: var(--mono); font-weight: 500; color: var(--accent2); }
+
+  /* Log */
+  .log-wrap { background: #080810; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .log-top { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+  .log-title { font-size: 10px; font-family: var(--mono); color: var(--muted); letter-spacing: 0.08em; }
+  .log-clear { font-size: 10px; font-family: var(--mono); color: var(--muted); cursor: pointer; background: none; border: none; color: var(--muted); }
+  .log-clear:hover { color: var(--text); }
+  .log-body { height: 160px; overflow-y: auto; padding: 10px 14px; }
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: transparent; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .log-line { font-size: 11px; font-family: var(--mono); line-height: 1.7; }
+  .log-ts { color: #3a3a55; margin-right: 10px; }
+  .log-ok { color: var(--green); }
+  .log-err { color: var(--red); }
+  .log-info { color: var(--accent2); }
+  .log-warn { color: var(--amber); }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .btn { padding: 9px 18px; font-size: 13px; font-family: var(--sans); font-weight: 500; border-radius: 9px; cursor: pointer; transition: all 0.15s; border: 1px solid var(--border2); background: transparent; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .btn:hover { background: var(--surface2); border-color: var(--border2); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+  .btn svg { width: 14px; height: 14px; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+  .btn-success { background: rgba(34,212,122,0.12); border-color: rgba(34,212,122,0.25); color: var(--green); }
+  .btn-success:hover { background: rgba(34,212,122,0.2); }
+  .btn-danger { background: rgba(255,79,79,0.08); border-color: rgba(255,79,79,0.2); color: var(--red); }
+  .btn-danger:hover { background: rgba(255,79,79,0.15); }
+  .btn-amber { background: rgba(245,166,35,0.08); border-color: rgba(245,166,35,0.2); color: var(--amber); }
+  .btn-amber:hover { background: rgba(245,166,35,0.15); }
+
+  /* Badges */
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-family: var(--mono); padding: 3px 8px; border-radius: 5px; font-weight: 500; }
+  .badge-purple { background: rgba(124,106,255,0.15); color: var(--accent2); border: 1px solid rgba(124,106,255,0.2); }
+  .badge-green { background: rgba(34,212,122,0.1); color: var(--green); border: 1px solid rgba(34,212,122,0.2); }
+
+  /* Divider */
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  /* Hidden */
+  .hidden { display: none !important; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">
+        <div class="logo-icon">
+          <svg viewBox="0 0 16 16"><path d="M2 3h12v2H2zm0 4h8v2H2zm0 4h10v2H2z"/></svg>
+        </div>
+        <div>
+          <div class="logo-name">SheetSync</div>
+          <div class="logo-sub">Excel → Google Sheets</div>
+        </div>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="nav-label">WORKFLOW</div>
+      <button class="nav-item active" id="nav1" onclick="goStep(1)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
+        Upload File
+        <span class="step-badge active" id="badge1">1</span>
+      </button>
+      <button class="nav-item" id="nav2" onclick="goStep(2)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4"/></svg>
+        Preview Data
+        <span class="step-badge" id="badge2">2</span>
+      </button>
+      <button class="nav-item" id="nav3" onclick="goStep(3)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M10 5l3 3-3 3"/></svg>
+        Map Columns
+        <span class="step-badge" id="badge3">3</span>
+      </button>
+      <button class="nav-item" id="nav4" onclick="goStep(4)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l2 2 3-3"/></svg>
+        Import
+        <span class="step-badge" id="badge4">4</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="version">v1.0 · Web App connected</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- STEP 1: Upload -->
+    <div id="step1">
+      <div class="page-header">
+        <div class="page-title">Upload your <span>Excel file</span></div>
+        <div class="page-desc">Drag and drop your .xlsx or .csv file to get started. Your data stays local — nothing is sent until you hit Import.</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon purple">
+            <svg viewBox="0 0 16 16" fill="none" stroke="#a594ff" stroke-width="1.5"><path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z"/><path d="M9 2v4h4"/></svg>
+          </div>
+          <div>
+            <div class="card-title">Select file</div>
+            <div class="card-subtitle">.xlsx · .xls · .csv supported</div>
+          </div>
+        </div>
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+          <div class="drop-icon-wrap">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="drop-title">Drop your file here</div>
+          <div class="drop-hint">or click anywhere to browse</div>
+          <div class="drop-types">
+            <span class="type-pill">.xlsx</span>
+            <span class="type-pill">.xls</span>
+            <span class="type-pill">.csv</span>
+          </div>
+        </div>
+        <div id="fileInfo" class="hidden">
+          <div class="file-info-bar">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <div>
+              <div class="fi-name" id="fileName">—</div>
+              <div class="fi-meta" id="fileMeta">—</div>
+            </div>
+            <button class="fi-remove" onclick="resetFile()">✕ Remove</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="toStep2Btn" disabled onclick="goStep(2)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4"/></svg>
+            Preview data
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2: Preview -->
+    <div id="step2" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Preview <span>your data</span></div>
+        <div class="page-desc">Showing up to 8 rows. Verify your data looks correct before mapping.</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon green">
+            <svg viewBox="0 0 16 16" fill="none" stroke="#22d47a" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4"/></svg>
+          </div>
+          <div style="flex:1">
+            <div class="card-title">Data preview</div>
+            <div class="card-subtitle" id="previewMeta">—</div>
+          </div>
+          <span class="badge badge-purple" id="rowBadge">0 rows</span>
+          <span class="badge badge-green" id="colBadge" style="margin-left:6px;">0 cols</span>
+        </div>
+        <div class="table-outer">
+          <div id="previewTable"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="goStep(1)">← Back</button>
+          <button class="btn btn-primary" onclick="goStep(3)">Map columns →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3: Map + Config -->
+    <div id="step3" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Map <span>columns</span></div>
+        <div class="page-desc">Rename columns or leave blank to skip them. Your Web App URL is pre-filled.</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon amber">
+            <svg viewBox="0 0 16 16" fill="none" stroke="#f5a623" stroke-width="1.5"><path d="M3 8h10M10 5l3 3-3 3"/></svg>
+          </div>
+          <div>
+            <div class="card-title">Destination</div>
+            <div class="card-subtitle">Web App endpoint + sheet config</div>
+          </div>
+        </div>
+        <div class="field-label">WEB APP URL</div>
+        <input class="field-input" id="webAppUrl" type="text" value="https://script.google.com/macros/s/AKfycbz5UQXHDjwPE10qqhENjizJ26FuhcFibBWGdTwrUtXlgEpq7bCnNEDKYCl8289VA8ow/exec" placeholder="https://script.google.com/macros/s/…/exec">
+        <div class="field-label">SHEET TAB NAME</div>
+        <input class="field-input" id="sheetTab" type="text" placeholder="Sheet1" value="Sheet1" style="width:200px;">
+        <div class="divider"></div>
+        <div class="card-header" style="margin-bottom:12px;">
+          <div>
+            <div class="card-title">Column mapping</div>
+            <div class="card-subtitle">Rename or leave blank to skip</div>
+          </div>
+        </div>
+        <div class="mapper-header">
+          <div class="mapper-col-label">EXCEL COLUMN</div>
+          <div></div>
+          <div class="mapper-col-label">TARGET NAME</div>
+        </div>
+        <div id="mapperRows"></div>
+        <div class="btn-row">
+          <button class="btn" onclick="goStep(2)">← Back</button>
+          <button class="btn btn-primary" onclick="goStep(4)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l2 2 3-3"/></svg>
+            Start import
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4: Import -->
+    <div id="step4" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Importing <span>data</span></div>
+        <div class="page-desc">Rows are sent one by one to your Google Sheet. Use the controls below to manage the process.</div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-val" id="mTotal">0</div>
+          <div class="stat-lbl">TOTAL ROWS</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val green" id="mDone">0</div>
+          <div class="stat-lbl">IMPORTED</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val red" id="mFail">0</div>
+          <div class="stat-lbl">FAILED</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="status-bar">
+          <span class="status-dot dot-idle" id="statusDot"></span>
+          <span class="status-text" id="statusText">Ready to import</span>
+          <span class="status-pct" id="pctText">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressBar"></div>
+        </div>
+        <div class="progress-labels">
+          <span id="progressLeft">0 of 0 rows</span>
+          <span id="progressEta">—</span>
+        </div>
+
+        <div class="log-wrap">
+          <div class="log-top">
+            <span class="log-title">ACTIVITY LOG</span>
+            <button class="log-clear" onclick="clearLog()">clear</button>
+          </div>
+          <div class="log-body" id="logBody"></div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-success" id="startBtn" onclick="startImport()">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3l9 5-9 5V3z"/></svg>
+            Start
+          </button>
+          <button class="btn btn-amber" id="pauseBtn" onclick="pauseImport()" disabled>
+            <svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10"/><rect x="9" y="3" width="3" height="10"/></svg>
+            Pause
+          </button>
+          <button class="btn btn-success hidden" id="resumeBtn" onclick="resumeImport()">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3l9 5-9 5V3z"/></svg>
+            Resume
+          </button>
+          <button class="btn btn-danger" id="stopBtn" onclick="stopImport()" disabled>
+            <svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
+            Stop
+          </button>
+          <button class="btn" id="restartBtn" onclick="restartImport()" disabled>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 105-5H5"/><path d="M3 5v3h3"/></svg>
+            Restart
+          </button>
+          <button class="btn" onclick="goStep(3)" id="backBtn">← Back</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const WEB_APP_URL = document.getElementById('webAppUrl');
+let headers = [], rows = [], colMap = [];
+let importIdx = 0, importDone = 0, importFail = 0;
+let isPaused = false, isStopped = false, isRunning = false;
+let importTimer = null, startTime = null;
+const DELAY = 600;
+
+const $ = id => document.getElementById(id);
+
+// ---- Navigation ----
+function goStep(n) {
+  [1,2,3,4].forEach(i => {
+    $('step'+i).classList.add('hidden');
+    const nav = $('nav'+i), badge = $('badge'+i);
+    nav.classList.remove('active');
+    badge.className = 'step-badge';
+    if(i < n) badge.classList.add('done');
+    else if(i === n) { nav.classList.add('active'); badge.classList.add('active'); }
+  });
+  $('step'+n).classList.remove('hidden');
+  if(n === 3) buildMapper();
+  if(n === 4) initImport();
+}
+
+// ---- File Handling ----
+const dz = $('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+$('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
+
+function handleFile(file) {
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+      headers = (data[0]||[]).map(String);
+      rows = data.slice(1).filter(r => r.some(c => c !== ''));
+      $('fileName').textContent = file.name;
+      $('fileMeta').textContent = rows.length + ' rows · ' + headers.length + ' columns · ' + (file.size/1024).toFixed(1) + ' KB';
+      $('fileInfo').classList.remove('hidden');
+      $('toStep2Btn').disabled = false;
+      buildPreview();
+    } catch(ex) { alert('Could not read file:\n' + ex.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function resetFile() {
+  headers = []; rows = [];
+  $('fileInput').value = '';
+  $('fileInfo').classList.add('hidden');
+  $('toStep2Btn').disabled = true;
+}
+
+function buildPreview() {
+  const max = Math.min(rows.length, 8);
+  $('rowBadge').textContent = rows.length + ' rows';
+  $('colBadge').textContent = headers.length + ' cols';
+  $('previewMeta').textContent = 'First ' + max + ' of ' + rows.length + ' rows shown';
+  let html = '<table><thead><tr>';
+  headers.forEach(h => { html += '<th>'+esc(h)+'</th>'; });
+  html += '</tr></thead><tbody>';
+  for(let i=0;i<max;i++){
+    html += '<tr>';
+    headers.forEach((_,j)=>{ html += '<td>'+(rows[i][j]!==undefined?esc(String(rows[i][j])):'')+'</td>'; });
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  if(rows.length > max) html += '<div class="more-rows">… and '+(rows.length-max)+' more rows</div>';
+  $('previewTable').innerHTML = html;
+}
+
+// ---- Column Mapper ----
+function buildMapper() {
+  let html = '';
+  headers.forEach((h,i) => {
+    html += `<div class="mapper-row">
+      <div class="mapper-src">${esc(h)}</div>
+      <div class="mapper-arrow">→</div>
+      <input type="text" id="map_${i}" value="${esc(h)}" placeholder="leave blank to skip">
+    </div>`;
+  });
+  $('mapperRows').innerHTML = html;
+}
+
+function getColMap() {
+  return headers.map((h,i) => {
+    const val = ($('map_'+i)||{value:h}).value.trim();
+    return { from: h, to: val, skip: val==='' };
+  });
+}
+
+// ---- Import Engine ----
+function initImport() {
+  colMap = getColMap();
+  importIdx = 0; importDone = 0; importFail = 0;
+  isPaused = false; isStopped = false; isRunning = false;
+  clearTimeout(importTimer);
+  $('mTotal').textContent = rows.length;
+  $('mDone').textContent = '0';
+  $('mFail').textContent = '0';
+  $('progressBar').style.width = '0%';
+  $('pctText').textContent = '0%';
+  $('progressLeft').textContent = '0 of ' + rows.length + ' rows';
+  $('progressEta').textContent = '—';
+  $('logBody').innerHTML = '';
+  setStatus('idle');
+  $('startBtn').disabled = false;
+  $('pauseBtn').disabled = true;
+  $('pauseBtn').classList.remove('hidden');
+  $('resumeBtn').classList.add('hidden');
+  $('stopBtn').disabled = true;
+  $('restartBtn').disabled = true;
+  $('backBtn').disabled = false;
+  const active = colMap.filter(c=>!c.skip).length;
+  log('info', 'Ready · ' + rows.length + ' rows · ' + active + ' columns mapped');
+  const url = $('webAppUrl').value.trim();
+  if(url) log('info', 'Endpoint: ' + url.substring(0,55)+'…');
+  else log('warn', 'No Web App URL set — imports will fail');
+}
+
+function startImport() {
+  $('startBtn').disabled = true;
+  $('pauseBtn').disabled = false;
+  $('stopBtn').disabled = false;
+  $('backBtn').disabled = true;
+  isStopped = false; isPaused = false; isRunning = true;
+  startTime = Date.now();
+  setStatus('running');
+  log('ok', '▶ Import started');
+  processNext();
+}
+
+async function processNext() {
+  if(isStopped || importIdx >= rows.length) {
+    if(!isStopped) {
+      setStatus('done');
+      log('ok', '✓ Done · ' + importDone + ' imported · ' + importFail + ' failed');
+      $('pauseBtn').disabled = true;
+      $('stopBtn').disabled = true;
+      $('restartBtn').disabled = false;
+    }
+    return;
+  }
+  if(isPaused) return;
+
+  const row = rows[importIdx];
+  const payload = { row: {}, sheetTab: $('sheetTab').value.trim() || 'Sheet1' };
+  colMap.forEach((cm,j) => { if(!cm.skip) payload.row[cm.to] = row[j]!==undefined ? row[j] : ''; });
+
+  const url = $('webAppUrl').value.trim();
+  let ok = false, errMsg = '';
+
+  if(url) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      ok = json.success;
+      if(!ok) errMsg = json.error || 'unknown error';
+    } catch(ex) {
+      errMsg = ex.message;
+    }
+  } else {
+    errMsg = 'No URL configured';
+  }
+
+  if(ok) {
+    importDone++;
+    const preview = Object.values(payload.row).slice(0,3).map(v=>String(v).substring(0,14)).join(' · ');
+    log('ok', 'Row ' + (importIdx+1) + ' · ' + preview);
+  } else {
+    importFail++;
+    log('err', 'Row ' + (importIdx+1) + ' failed · ' + errMsg);
+  }
+
+  importIdx++;
+  const pct = Math.round(importIdx / rows.length * 100);
+  $('progressBar').style.width = pct + '%';
+  $('pctText').textContent = pct + '%';
+  $('mDone').textContent = importDone;
+  $('mFail').textContent = importFail;
+  $('progressLeft').textContent = importIdx + ' of ' + rows.length + ' rows';
+
+  if(startTime && importIdx > 0) {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const rate = importIdx / elapsed;
+    const remaining = Math.round((rows.length - importIdx) / rate);
+    $('progressEta').textContent = remaining > 0 ? 'ETA ~' + remaining + 's' : 'Almost done';
+  }
+
+  importTimer = setTimeout(processNext, DELAY);
+}
+
+function pauseImport() {
+  isPaused = true;
+  clearTimeout(importTimer);
+  setStatus('paused');
+  $('pauseBtn').classList.add('hidden');
+  $('resumeBtn').classList.remove('hidden');
+  log('warn', '⏸ Paused at row ' + importIdx + ' of ' + rows.length);
+}
+
+function resumeImport() {
+  isPaused = false;
+  $('resumeBtn').classList.add('hidden');
+  $('pauseBtn').classList.remove('hidden');
+  setStatus('running');
+  log('ok', '▶ Resumed from row ' + importIdx);
+  processNext();
+}
+
+function stopImport() {
+  isStopped = true;
+  clearTimeout(importTimer);
+  setStatus('stopped');
+  $('pauseBtn').disabled = true;
+  $('resumeBtn').classList.add('hidden');
+  $('pauseBtn').classList.remove('hidden');
+  $('stopBtn').disabled = true;
+  $('restartBtn').disabled = false;
+  $('backBtn').disabled = false;
+  log('err', '■ Stopped at row ' + importIdx + ' of ' + rows.length);
+}
+
+function restartImport() {
+  clearTimeout(importTimer);
+  initImport();
+}
+
+function setStatus(s) {
+  const dot = $('statusDot'), txt = $('statusText');
+  dot.className = 'status-dot';
+  const map = {
+    idle:    ['dot-idle',    'Ready to import'],
+    running: ['dot-running', 'Importing rows…'],
+    paused:  ['dot-paused',  'Paused'],
+    done:    ['dot-done',    'Import complete'],
+    stopped: ['dot-stopped', 'Stopped'],
+  };
+  const [cls, label] = map[s] || map.idle;
+  dot.classList.add(cls);
+  txt.textContent = label;
+}
+
+function log(type, msg) {
+  const lb = $('logBody');
+  const ts = new Date().toLocaleTimeString('en-GB',{hour12:false});
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-${type}">${esc(msg)}</span>`;
+  lb.appendChild(div);
+  lb.scrollTop = lb.scrollHeight;
+}
+
+function clearLog() { $('logBody').innerHTML = ''; }
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
