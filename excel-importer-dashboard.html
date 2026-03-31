@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SheetSync — Excel Importer</title>
+<title>SheetSync — Excel → Google Form</title>
+<meta name="description" content="Import Excel data row by row into any Google Form automatically. Upload, preview, map, and submit.">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -11,6 +12,7 @@
     --bg: #0a0a0f;
     --surface: #111118;
     --surface2: #18181f;
+    --surface3: #1e1e28;
     --border: rgba(255,255,255,0.07);
     --border2: rgba(255,255,255,0.12);
     --text: #f0f0f5;
@@ -20,6 +22,7 @@
     --green: #22d47a;
     --red: #ff4f4f;
     --amber: #f5a623;
+    --blue: #4faeff;
     --mono: 'DM Mono', monospace;
     --sans: 'Syne', sans-serif;
   }
@@ -28,14 +31,14 @@
 
   /* Layout */
   .shell { display: flex; min-height: 100vh; }
-  .sidebar { width: 220px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); padding: 28px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; }
-  .main { margin-left: 220px; flex: 1; padding: 40px 48px; max-width: 960px; }
+  .sidebar { width: 232px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); padding: 28px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; }
+  .main { margin-left: 232px; flex: 1; padding: 40px 48px; max-width: 980px; }
 
   /* Sidebar */
   .logo { padding: 0 24px 28px; border-bottom: 1px solid var(--border); }
   .logo-mark { display: flex; align-items: center; gap: 10px; }
-  .logo-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-  .logo-icon svg { width: 16px; height: 16px; fill: white; }
+  .logo-icon { width: 34px; height: 34px; background: linear-gradient(135deg, var(--accent), #a594ff); border-radius: 9px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(124,106,255,0.35); }
+  .logo-icon svg { width: 17px; height: 17px; fill: white; }
   .logo-name { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
   .logo-sub { font-size: 10px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
   .nav { padding: 20px 12px; flex: 1; }
@@ -64,6 +67,8 @@
   .card-icon.purple { background: rgba(124,106,255,0.15); }
   .card-icon.green { background: rgba(34,212,122,0.12); }
   .card-icon.amber { background: rgba(245,166,35,0.12); }
+  .card-icon.blue { background: rgba(79,174,255,0.12); }
+  .card-icon.red { background: rgba(255,79,79,0.12); }
   .card-icon svg { width: 16px; height: 16px; }
   .card-title { font-size: 14px; font-weight: 600; }
   .card-subtitle { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
@@ -72,8 +77,9 @@
   .drop-zone { border: 1.5px dashed rgba(124,106,255,0.3); border-radius: 12px; padding: 36px 24px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
   .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(124,106,255,0.05); }
   .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-  .drop-icon-wrap { width: 48px; height: 48px; border-radius: 12px; background: rgba(124,106,255,0.1); border: 1px solid rgba(124,106,255,0.2); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
-  .drop-icon-wrap svg { width: 22px; height: 22px; stroke: var(--accent2); fill: none; stroke-width: 1.5; }
+  .drop-icon-wrap { width: 52px; height: 52px; border-radius: 14px; background: rgba(124,106,255,0.1); border: 1px solid rgba(124,106,255,0.2); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; transition: transform 0.2s; }
+  .drop-zone:hover .drop-icon-wrap { transform: scale(1.05); }
+  .drop-icon-wrap svg { width: 24px; height: 24px; stroke: var(--accent2); fill: none; stroke-width: 1.5; }
   .drop-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
   .drop-hint { font-size: 12px; color: var(--muted); }
   .drop-types { display: flex; gap: 6px; justify-content: center; margin-top: 14px; }
@@ -104,22 +110,43 @@
   .stat-val.red { color: var(--red); }
   .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--mono); }
 
-  /* Mapper */
-  .mapper-header { display: grid; grid-template-columns: 1fr 28px 1fr; gap: 10px; margin-bottom: 8px; }
-  .mapper-col-label { font-size: 10px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.06em; }
-  .mapper-row { display: grid; grid-template-columns: 1fr 28px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
-  .mapper-src { font-size: 12px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mapper-arrow { text-align: center; color: var(--muted); font-size: 12px; }
-  .mapper-row input { font-size: 12px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); width: 100%; outline: none; transition: border 0.15s; }
-  .mapper-row input:focus { border-color: var(--accent); }
-  .mapper-row input::placeholder { color: var(--muted); }
-
-  /* URL Input */
-  .field-label { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 8px; letter-spacing: 0.04em; }
-  .field-input { width: 100%; font-size: 13px; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: var(--mono); outline: none; transition: border 0.15s; margin-bottom: 16px; }
-  .field-input:focus { border-color: var(--accent); }
+  /* Google Form URL Section */
+  .form-url-section { margin-bottom: 24px; }
+  .field-label { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 8px; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px; }
+  .field-label .required { color: var(--red); }
+  .field-input { width: 100%; font-size: 13px; padding: 11px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: var(--mono); outline: none; transition: border 0.15s; }
+  .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,106,255,0.1); }
   .field-input::placeholder { color: var(--muted); }
-  .field-row { display: grid; grid-template-columns: 1fr 200px; gap: 12px; }
+  .field-input.valid { border-color: rgba(34,212,122,0.4); }
+  .field-input.invalid { border-color: rgba(255,79,79,0.4); }
+
+  /* Validation */
+  .url-validation { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; font-family: var(--mono); min-height: 20px; }
+  .url-validation .v-icon { width: 14px; height: 14px; flex-shrink: 0; }
+  .url-status-ok { color: var(--green); }
+  .url-status-err { color: var(--red); }
+  .url-status-info { color: var(--accent2); }
+
+  /* Entry Fields Mapper */
+  .entry-mapper { }
+  .mapper-header { display: grid; grid-template-columns: 1fr 24px 1fr 120px; gap: 10px; margin-bottom: 8px; align-items: center; }
+  .mapper-col-label { font-size: 10px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.06em; }
+  .mapper-row { display: grid; grid-template-columns: 1fr 24px 1fr 120px; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .mapper-src { font-size: 12px; padding: 9px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mapper-arrow { text-align: center; color: var(--muted); font-size: 14px; }
+  .mapper-row input[type="text"] { font-size: 12px; padding: 9px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); width: 100%; outline: none; transition: border 0.15s; }
+  .mapper-row input[type="text"]:focus { border-color: var(--accent); }
+  .mapper-row input[type="text"]::placeholder { color: var(--muted); }
+  .skip-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: var(--mono); color: var(--muted); cursor: pointer; user-select: none; }
+  .skip-toggle input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+
+  /* Info Box */
+  .info-box { padding: 14px 16px; border-radius: 10px; border: 1px solid; margin-bottom: 16px; font-size: 12px; font-family: var(--mono); line-height: 1.7; }
+  .info-box.purple { background: rgba(124,106,255,0.06); border-color: rgba(124,106,255,0.2); color: var(--accent2); }
+  .info-box.amber { background: rgba(245,166,35,0.06); border-color: rgba(245,166,35,0.2); color: var(--amber); }
+  .info-box.green { background: rgba(34,212,122,0.06); border-color: rgba(34,212,122,0.2); color: var(--green); }
+  .info-box.blue { background: rgba(79,174,255,0.06); border-color: rgba(79,174,255,0.2); color: var(--blue); }
+  .info-box strong { font-weight: 600; }
 
   /* Progress */
   .progress-track { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin: 8px 0 4px; }
@@ -142,9 +169,9 @@
   .log-wrap { background: #080810; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .log-top { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--border); }
   .log-title { font-size: 10px; font-family: var(--mono); color: var(--muted); letter-spacing: 0.08em; }
-  .log-clear { font-size: 10px; font-family: var(--mono); color: var(--muted); cursor: pointer; background: none; border: none; color: var(--muted); }
+  .log-clear { font-size: 10px; font-family: var(--mono); color: var(--muted); cursor: pointer; background: none; border: none; }
   .log-clear:hover { color: var(--text); }
-  .log-body { height: 160px; overflow-y: auto; padding: 10px 14px; }
+  .log-body { height: 180px; overflow-y: auto; padding: 10px 14px; }
   .log-body::-webkit-scrollbar { width: 4px; }
   .log-body::-webkit-scrollbar-track { background: transparent; }
   .log-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
@@ -158,7 +185,7 @@
   /* Buttons */
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
   .btn { padding: 9px 18px; font-size: 13px; font-family: var(--sans); font-weight: 500; border-radius: 9px; cursor: pointer; transition: all 0.15s; border: 1px solid var(--border2); background: transparent; color: var(--text); display: flex; align-items: center; gap: 6px; }
-  .btn:hover { background: var(--surface2); border-color: var(--border2); }
+  .btn:hover { background: var(--surface2); }
   .btn:disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
   .btn svg { width: 14px; height: 14px; }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
@@ -174,9 +201,15 @@
   .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-family: var(--mono); padding: 3px 8px; border-radius: 5px; font-weight: 500; }
   .badge-purple { background: rgba(124,106,255,0.15); color: var(--accent2); border: 1px solid rgba(124,106,255,0.2); }
   .badge-green { background: rgba(34,212,122,0.1); color: var(--green); border: 1px solid rgba(34,212,122,0.2); }
+  .badge-blue { background: rgba(79,174,255,0.1); color: var(--blue); border: 1px solid rgba(79,174,255,0.2); }
 
   /* Divider */
   .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  /* Pill tabs */
+  .tab-row { display: flex; gap: 6px; margin-bottom: 16px; }
+  .tab-pill { padding: 6px 14px; font-size: 12px; font-family: var(--mono); border-radius: 20px; cursor: pointer; border: 1px solid var(--border2); background: none; color: var(--muted); transition: all 0.15s; }
+  .tab-pill.active { background: rgba(124,106,255,0.15); border-color: var(--accent); color: var(--accent2); }
 
   /* Hidden */
   .hidden { display: none !important; }
@@ -185,6 +218,10 @@
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* Glow pulse on active step badge */
+  @keyframes glow { 0%,100%{box-shadow:0 0 0 0 rgba(124,106,255,0.5)} 50%{box-shadow:0 0 0 4px rgba(124,106,255,0.15)} }
+  .step-badge.active { animation: glow 2s infinite; }
 </style>
 </head>
 <body>
@@ -199,15 +236,15 @@
         </div>
         <div>
           <div class="logo-name">SheetSync</div>
-          <div class="logo-sub">Excel → Google Sheets</div>
+          <div class="logo-sub">Excel → Google Form</div>
         </div>
       </div>
     </div>
     <nav class="nav">
       <div class="nav-label">WORKFLOW</div>
       <button class="nav-item active" id="nav1" onclick="goStep(1)">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
-        Upload File
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z"/><path d="M9 2v4h4"/></svg>
+        Upload Excel
         <span class="step-badge active" id="badge1">1</span>
       </button>
       <button class="nav-item" id="nav2" onclick="goStep(2)">
@@ -216,18 +253,23 @@
         <span class="step-badge" id="badge2">2</span>
       </button>
       <button class="nav-item" id="nav3" onclick="goStep(3)">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M10 5l3 3-3 3"/></svg>
-        Map Columns
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2"/><path d="M4 13c0-2.2 1.8-4 4-4s4 1.8 4 4"/><path d="M12 3l2 2-2 2"/></svg>
+        Google Form
         <span class="step-badge" id="badge3">3</span>
       </button>
       <button class="nav-item" id="nav4" onclick="goStep(4)">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l2 2 3-3"/></svg>
-        Import
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M10 5l3 3-3 3"/></svg>
+        Map Fields
         <span class="step-badge" id="badge4">4</span>
+      </button>
+      <button class="nav-item" id="nav5" onclick="goStep(5)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l2 2 3-3"/></svg>
+        Submit
+        <span class="step-badge" id="badge5">5</span>
       </button>
     </nav>
     <div class="sidebar-footer">
-      <div class="version">v1.0 · Web App connected</div>
+      <div class="version">v2.0 · Google Form Importer</div>
     </div>
   </aside>
 
@@ -238,15 +280,18 @@
     <div id="step1">
       <div class="page-header">
         <div class="page-title">Upload your <span>Excel file</span></div>
-        <div class="page-desc">Drag and drop your .xlsx or .csv file to get started. Your data stays local — nothing is sent until you hit Import.</div>
+        <div class="page-desc">Drag and drop your .xlsx or .csv file to get started. Your data stays local — nothing is sent until you hit Submit.</div>
+      </div>
+      <div class="info-box purple">
+        <strong>How it works:</strong> Upload your Excel sheet → paste your Google Form URL → map each column to a form field → submit all rows automatically, one by one.
       </div>
       <div class="card">
         <div class="card-header">
           <div class="card-icon purple">
-            <svg viewBox="0 0 16 16" fill="none" stroke="#a594ff" stroke-width="1.5"><path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z"/><path d="M9 2v4h4"/></svg>
+            <svg viewBox="0 0 16 16" fill="none" stroke="#a594ff" stroke-width="1.5"><path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 002-2V6L9 2z"/><path d="M9 2v4h4"/></svg>
           </div>
           <div>
-            <div class="card-title">Select file</div>
+            <div class="card-title">Select spreadsheet</div>
             <div class="card-subtitle">.xlsx · .xls · .csv supported</div>
           </div>
         </div>
@@ -276,7 +321,7 @@
         <div class="btn-row">
           <button class="btn btn-primary" id="toStep2Btn" disabled onclick="goStep(2)">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4"/></svg>
-            Preview data
+            Preview data →
           </button>
         </div>
       </div>
@@ -286,7 +331,7 @@
     <div id="step2" class="hidden">
       <div class="page-header">
         <div class="page-title">Preview <span>your data</span></div>
-        <div class="page-desc">Showing up to 8 rows. Verify your data looks correct before mapping.</div>
+        <div class="page-desc">Showing up to 8 rows. Verify your data looks correct before connecting to your Google Form.</div>
       </div>
       <div class="card">
         <div class="card-header">
@@ -305,59 +350,104 @@
         </div>
         <div class="btn-row">
           <button class="btn" onclick="goStep(1)">← Back</button>
-          <button class="btn btn-primary" onclick="goStep(3)">Map columns →</button>
+          <button class="btn btn-primary" onclick="goStep(3)">Connect Google Form →</button>
         </div>
       </div>
     </div>
 
-    <!-- STEP 3: Map + Config -->
+    <!-- STEP 3: Google Form URL -->
     <div id="step3" class="hidden">
       <div class="page-header">
-        <div class="page-title">Map <span>columns</span></div>
-        <div class="page-desc">Rename columns or leave blank to skip them. Your Web App URL is pre-filled.</div>
+        <div class="page-title">Connect <span>Google Form</span></div>
+        <div class="page-desc">Paste your Google Form share URL below. We'll extract the form ID and prepare it for submission.</div>
       </div>
+
+      <div class="info-box amber">
+        <strong>How to get your Google Form URL:</strong><br>
+        Open your Google Form → click <strong>Send</strong> (top right) → copy the link. It looks like:<br>
+        <code>https://docs.google.com/forms/d/e/XXXXX/viewform</code>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon blue">
+            <svg viewBox="0 0 16 16" fill="none" stroke="#4faeff" stroke-width="1.5"><path d="M10 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V5L10 2z"/><path d="M10 2v3h3"/><path d="M5 7h6M5 10h4"/></svg>
+          </div>
+          <div>
+            <div class="card-title">Google Form URL</div>
+            <div class="card-subtitle">Paste your form share link</div>
+          </div>
+        </div>
+
+        <div class="field-label">GOOGLE FORM URL <span class="required">*</span></div>
+        <input class="field-input" id="gformUrl" type="text"
+          placeholder="https://docs.google.com/forms/d/e/YOUR_FORM_ID/viewform"
+          oninput="validateFormUrl()">
+        <div class="url-validation" id="urlValidation"></div>
+
+        <div class="divider"></div>
+
+        <div class="field-label">FORM ENTRY FIELD IDs <span class="required">*</span></div>
+        <div class="info-box purple" style="margin-bottom:12px;">
+          <strong>How to find entry IDs:</strong> Open your form → right-click → View Page Source → search for <code>entry.</code> — you'll see IDs like <code>entry.123456789</code> for each question. Enter them below, one per line, in the <strong>same order</strong> as your form questions.
+        </div>
+        <div class="field-label" style="margin-top:8px;">ENTRY FIELD IDs (one per line, e.g. entry.123456789)</div>
+        <textarea class="field-input" id="entryIds" rows="5"
+          placeholder="entry.123456789&#10;entry.987654321&#10;entry.111222333"
+          style="resize:vertical; line-height:1.6;"
+          oninput="parseEntryIds()"></textarea>
+        <div class="url-validation" id="entryValidation"></div>
+
+        <div class="btn-row">
+          <button class="btn" onclick="goStep(2)">← Back</button>
+          <button class="btn btn-primary" id="toStep4Btn" disabled onclick="goStep(4)">
+            Map fields →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4: Map Fields -->
+    <div id="step4" class="hidden">
+      <div class="page-header">
+        <div class="page-title">Map <span>Excel → Form fields</span></div>
+        <div class="page-desc">Assign each Excel column to the corresponding Google Form entry field. Check "Skip" to exclude a column.</div>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <div class="card-icon amber">
             <svg viewBox="0 0 16 16" fill="none" stroke="#f5a623" stroke-width="1.5"><path d="M3 8h10M10 5l3 3-3 3"/></svg>
           </div>
           <div>
-            <div class="card-title">Destination</div>
-            <div class="card-subtitle">Web App endpoint + sheet config</div>
+            <div class="card-title">Column → Field mapping</div>
+            <div class="card-subtitle" id="mappingSubtitle">Map your Excel columns to Google Form fields</div>
           </div>
         </div>
-        <div class="field-label">WEB APP URL</div>
-        <input class="field-input" id="webAppUrl" type="text" value="https://script.google.com/macros/s/AKfycbz5UQXHDjwPE10qqhENjizJ26FuhcFibBWGdTwrUtXlgEpq7bCnNEDKYCl8289VA8ow/exec" placeholder="https://script.google.com/macros/s/…/exec">
-        <div class="field-label">SHEET TAB NAME</div>
-        <input class="field-input" id="sheetTab" type="text" placeholder="Sheet1" value="Sheet1" style="width:200px;">
-        <div class="divider"></div>
-        <div class="card-header" style="margin-bottom:12px;">
-          <div>
-            <div class="card-title">Column mapping</div>
-            <div class="card-subtitle">Rename or leave blank to skip</div>
-          </div>
-        </div>
+
         <div class="mapper-header">
           <div class="mapper-col-label">EXCEL COLUMN</div>
           <div></div>
-          <div class="mapper-col-label">TARGET NAME</div>
+          <div class="mapper-col-label">FORM ENTRY FIELD ID</div>
+          <div class="mapper-col-label">SKIP</div>
         </div>
         <div id="mapperRows"></div>
+
         <div class="btn-row">
-          <button class="btn" onclick="goStep(2)">← Back</button>
-          <button class="btn btn-primary" onclick="goStep(4)">
+          <button class="btn" onclick="goStep(3)">← Back</button>
+          <button class="btn btn-primary" onclick="goStep(5)">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l2 2 3-3"/></svg>
-            Start import
+            Start submitting →
           </button>
         </div>
       </div>
     </div>
 
-    <!-- STEP 4: Import -->
-    <div id="step4" class="hidden">
+    <!-- STEP 5: Submit -->
+    <div id="step5" class="hidden">
       <div class="page-header">
-        <div class="page-title">Importing <span>data</span></div>
-        <div class="page-desc">Rows are sent one by one to your Google Sheet. Use the controls below to manage the process.</div>
+        <div class="page-title">Submitting <span>to Google Form</span></div>
+        <div class="page-desc">Each Excel row is submitted as a separate Google Form response. Use the controls to pause, resume or stop.</div>
       </div>
 
       <div class="stats-row">
@@ -367,7 +457,7 @@
         </div>
         <div class="stat-box">
           <div class="stat-val green" id="mDone">0</div>
-          <div class="stat-lbl">IMPORTED</div>
+          <div class="stat-lbl">SUBMITTED</div>
         </div>
         <div class="stat-box">
           <div class="stat-val red" id="mFail">0</div>
@@ -378,7 +468,7 @@
       <div class="card">
         <div class="status-bar">
           <span class="status-dot dot-idle" id="statusDot"></span>
-          <span class="status-text" id="statusText">Ready to import</span>
+          <span class="status-text" id="statusText">Ready to submit</span>
           <span class="status-pct" id="pctText">0%</span>
         </div>
         <div class="progress-track">
@@ -391,7 +481,7 @@
 
         <div class="log-wrap">
           <div class="log-top">
-            <span class="log-title">ACTIVITY LOG</span>
+            <span class="log-title">SUBMISSION LOG</span>
             <button class="log-clear" onclick="clearLog()">clear</button>
           </div>
           <div class="log-body" id="logBody"></div>
@@ -418,8 +508,16 @@
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 105-5H5"/><path d="M3 5v3h3"/></svg>
             Restart
           </button>
-          <button class="btn" onclick="goStep(3)" id="backBtn">← Back</button>
+          <button class="btn" onclick="goStep(4)" id="backBtn">← Back</button>
         </div>
+      </div>
+
+      <!-- CORS notice -->
+      <div class="info-box blue" id="corsNotice" style="margin-top:0;">
+        <strong>ℹ️ Note on Browser Submissions:</strong> Google Forms blocks direct cross-origin requests from browsers (CORS). 
+        Each row is submitted via a hidden iframe trick — this works for simple text fields. 
+        If your form has file-upload fields, use <strong>Google Apps Script</strong> instead.
+        Successful submissions won't return a confirmation — the log will show <em>Sent</em> for each row after a short delay.
       </div>
     </div>
 
@@ -427,31 +525,37 @@
 </div>
 
 <script>
-const WEB_APP_URL = document.getElementById('webAppUrl');
+const $ = id => document.getElementById(id);
 let headers = [], rows = [], colMap = [];
 let importIdx = 0, importDone = 0, importFail = 0;
 let isPaused = false, isStopped = false, isRunning = false;
 let importTimer = null, startTime = null;
-const DELAY = 600;
+let parsedFormAction = '';
+let parsedEntryIds = [];
+const DELAY = 1200; // ms between submissions (be respectful to Google)
 
-const $ = id => document.getElementById(id);
-
-// ---- Navigation ----
+// ===========================
+// NAVIGATION
+// ===========================
 function goStep(n) {
-  [1,2,3,4].forEach(i => {
-    $('step'+i).classList.add('hidden');
-    const nav = $('nav'+i), badge = $('badge'+i);
+  const total = 5;
+  for (let i = 1; i <= total; i++) {
+    $('step' + i).classList.add('hidden');
+    const nav = $('nav' + i), badge = $('badge' + i);
     nav.classList.remove('active');
     badge.className = 'step-badge';
-    if(i < n) badge.classList.add('done');
-    else if(i === n) { nav.classList.add('active'); badge.classList.add('active'); }
-  });
-  $('step'+n).classList.remove('hidden');
-  if(n === 3) buildMapper();
-  if(n === 4) initImport();
+    if (i < n) badge.classList.add('done');
+    else if (i === n) { nav.classList.add('active'); badge.classList.add('active'); }
+  }
+  $('step' + n).classList.remove('hidden');
+  if (n === 3) validateFormUrl();
+  if (n === 4) buildMapper();
+  if (n === 5) initImport();
 }
 
-// ---- File Handling ----
+// ===========================
+// FILE HANDLING
+// ===========================
 const dz = $('dropZone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
@@ -459,21 +563,21 @@ dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag
 $('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
 
 function handleFile(file) {
-  if(!file) return;
+  if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
-      headers = (data[0]||[]).map(String);
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      headers = (data[0] || []).map(String);
       rows = data.slice(1).filter(r => r.some(c => c !== ''));
       $('fileName').textContent = file.name;
-      $('fileMeta').textContent = rows.length + ' rows · ' + headers.length + ' columns · ' + (file.size/1024).toFixed(1) + ' KB';
+      $('fileMeta').textContent = rows.length + ' rows · ' + headers.length + ' columns · ' + (file.size / 1024).toFixed(1) + ' KB';
       $('fileInfo').classList.remove('hidden');
       $('toStep2Btn').disabled = false;
       buildPreview();
-    } catch(ex) { alert('Could not read file:\n' + ex.message); }
+    } catch (ex) { alert('Could not read file:\n' + ex.message); }
   };
   reader.readAsArrayBuffer(file);
 }
@@ -491,39 +595,132 @@ function buildPreview() {
   $('colBadge').textContent = headers.length + ' cols';
   $('previewMeta').textContent = 'First ' + max + ' of ' + rows.length + ' rows shown';
   let html = '<table><thead><tr>';
-  headers.forEach(h => { html += '<th>'+esc(h)+'</th>'; });
+  headers.forEach(h => { html += '<th>' + esc(h) + '</th>'; });
   html += '</tr></thead><tbody>';
-  for(let i=0;i<max;i++){
+  for (let i = 0; i < max; i++) {
     html += '<tr>';
-    headers.forEach((_,j)=>{ html += '<td>'+(rows[i][j]!==undefined?esc(String(rows[i][j])):'')+'</td>'; });
+    headers.forEach((_, j) => { html += '<td>' + (rows[i][j] !== undefined ? esc(String(rows[i][j])) : '') + '</td>'; });
     html += '</tr>';
   }
   html += '</tbody></table>';
-  if(rows.length > max) html += '<div class="more-rows">… and '+(rows.length-max)+' more rows</div>';
+  if (rows.length > max) html += '<div class="more-rows">… and ' + (rows.length - max) + ' more rows</div>';
   $('previewTable').innerHTML = html;
 }
 
-// ---- Column Mapper ----
+// ===========================
+// GOOGLE FORM URL VALIDATION
+// ===========================
+function validateFormUrl() {
+  const raw = $('gformUrl').value.trim();
+  const vEl = $('urlValidation');
+  const btn = $('toStep4Btn');
+
+  if (!raw) {
+    vEl.innerHTML = '';
+    $('gformUrl').className = 'field-input';
+    checkStep3Ready();
+    return;
+  }
+
+  // Accept both viewform and /formResponse URLs
+  const matchViewForm = raw.match(/forms\/d\/e\/([\w-]+)\/viewform/);
+  const matchFormId   = raw.match(/forms\/d\/([\w-]+)/);
+
+  if (matchViewForm) {
+    const formId = matchViewForm[1];
+    parsedFormAction = 'https://docs.google.com/forms/d/e/' + formId + '/formResponse';
+    $('gformUrl').className = 'field-input valid';
+    vEl.innerHTML = `<span class="url-status-ok">✓ Form ID detected: <strong>${formId.substring(0, 20)}…</strong> — submit action ready</span>`;
+  } else if (matchFormId) {
+    const formId = matchFormId[1];
+    // For /forms/d/ style, form action isn't directly available but we note it
+    parsedFormAction = '';
+    $('gformUrl').className = 'field-input invalid';
+    vEl.innerHTML = `<span class="url-status-err">✗ Please use the full share URL (with <code>/viewform</code>). Go to Send → Copy link in Google Forms.</span>`;
+  } else if (raw.length > 5) {
+    parsedFormAction = '';
+    $('gformUrl').className = 'field-input invalid';
+    vEl.innerHTML = `<span class="url-status-err">✗ Not a valid Google Form URL. It should contain <code>forms/d/e/…/viewform</code></span>`;
+  }
+
+  checkStep3Ready();
+}
+
+function parseEntryIds() {
+  const raw = $('entryIds').value.trim();
+  const vEl = $('entryValidation');
+
+  if (!raw) {
+    parsedEntryIds = [];
+    vEl.innerHTML = '';
+    checkStep3Ready();
+    return;
+  }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const valid = [], invalid = [];
+  lines.forEach(l => {
+    if (/^entry\.\d+$/.test(l)) valid.push(l);
+    else invalid.push(l);
+  });
+
+  parsedEntryIds = valid;
+
+  if (invalid.length > 0) {
+    vEl.innerHTML = `<span class="url-status-err">✗ Invalid entries: ${invalid.map(esc).join(', ')} — must be like <code>entry.123456789</code></span>`;
+  } else if (valid.length > 0) {
+    vEl.innerHTML = `<span class="url-status-ok">✓ ${valid.length} entry field${valid.length > 1 ? 's' : ''} ready</span>`;
+  }
+
+  checkStep3Ready();
+}
+
+function checkStep3Ready() {
+  const btn = $('toStep4Btn');
+  const ready = parsedFormAction && parsedEntryIds.length > 0;
+  btn.disabled = !ready;
+}
+
+// ===========================
+// COLUMN MAPPER (Step 4)
+// ===========================
 function buildMapper() {
+  $('mappingSubtitle').textContent = headers.length + ' Excel columns · ' + parsedEntryIds.length + ' form fields detected';
   let html = '';
-  headers.forEach((h,i) => {
-    html += `<div class="mapper-row">
+  headers.forEach((h, i) => {
+    const entryId = parsedEntryIds[i] || '';
+    html += `<div class="mapper-row" id="mapper_row_${i}">
       <div class="mapper-src">${esc(h)}</div>
       <div class="mapper-arrow">→</div>
-      <input type="text" id="map_${i}" value="${esc(h)}" placeholder="leave blank to skip">
+      <input type="text" id="map_${i}" value="${esc(entryId)}" placeholder="entry.123456789" oninput="updateSkip(${i})">
+      <label class="skip-toggle"><input type="checkbox" id="skip_${i}" onchange="toggleSkipRow(${i})"> Skip</label>
     </div>`;
   });
   $('mapperRows').innerHTML = html;
 }
 
+function toggleSkipRow(i) {
+  const skip = $('skip_' + i).checked;
+  const row = $('mapper_row_' + i);
+  const inp = $('map_' + i);
+  if (skip) { row.style.opacity = '0.4'; inp.disabled = true; }
+  else       { row.style.opacity = '1';   inp.disabled = false; }
+}
+
+function updateSkip(i) {}
+
 function getColMap() {
-  return headers.map((h,i) => {
-    const val = ($('map_'+i)||{value:h}).value.trim();
-    return { from: h, to: val, skip: val==='' };
+  return headers.map((h, i) => {
+    const skipEl = $('skip_' + i);
+    const skip = skipEl ? skipEl.checked : false;
+    const entryId = ($('map_' + i) || {}).value.trim();
+    return { col: h, entryId, skip: skip || !entryId };
   });
 }
 
-// ---- Import Engine ----
+// ===========================
+// IMPORT ENGINE (Step 5)
+// ===========================
 function initImport() {
   colMap = getColMap();
   importIdx = 0; importDone = 0; importFail = 0;
@@ -545,11 +742,11 @@ function initImport() {
   $('stopBtn').disabled = true;
   $('restartBtn').disabled = true;
   $('backBtn').disabled = false;
-  const active = colMap.filter(c=>!c.skip).length;
-  log('info', 'Ready · ' + rows.length + ' rows · ' + active + ' columns mapped');
-  const url = $('webAppUrl').value.trim();
-  if(url) log('info', 'Endpoint: ' + url.substring(0,55)+'…');
-  else log('warn', 'No Web App URL set — imports will fail');
+
+  const active = colMap.filter(c => !c.skip).length;
+  log('info', 'Ready · ' + rows.length + ' rows · ' + active + ' fields mapped');
+  log('info', 'Form: ' + parsedFormAction.substring(0, 60) + '…');
+  if (active === 0) log('warn', 'No fields mapped — check your field IDs');
 }
 
 function startImport() {
@@ -560,54 +757,57 @@ function startImport() {
   isStopped = false; isPaused = false; isRunning = true;
   startTime = Date.now();
   setStatus('running');
-  log('ok', '▶ Import started');
+  log('ok', '▶ Submission started');
   processNext();
 }
 
 async function processNext() {
-  if(isStopped || importIdx >= rows.length) {
-    if(!isStopped) {
+  if (isStopped || importIdx >= rows.length) {
+    if (!isStopped) {
       setStatus('done');
-      log('ok', '✓ Done · ' + importDone + ' imported · ' + importFail + ' failed');
+      log('ok', '✓ Done · ' + importDone + ' submitted · ' + importFail + ' failed');
       $('pauseBtn').disabled = true;
       $('stopBtn').disabled = true;
       $('restartBtn').disabled = false;
     }
     return;
   }
-  if(isPaused) return;
+  if (isPaused) return;
 
   const row = rows[importIdx];
-  const payload = { row: {}, sheetTab: $('sheetTab').value.trim() || 'Sheet1' };
-  colMap.forEach((cm,j) => { if(!cm.skip) payload.row[cm.to] = row[j]!==undefined ? row[j] : ''; });
+  const rowIdx = importIdx;
 
-  const url = $('webAppUrl').value.trim();
-  let ok = false, errMsg = '';
-
-  if(url) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-      });
-      const json = await res.json();
-      ok = json.success;
-      if(!ok) errMsg = json.error || 'unknown error';
-    } catch(ex) {
-      errMsg = ex.message;
+  // Build form data
+  const formData = new URLSearchParams();
+  colMap.forEach((cm, j) => {
+    if (!cm.skip && cm.entryId) {
+      const cellVal = (row[j] !== undefined && row[j] !== null) ? String(row[j]) : '';
+      formData.append(cm.entryId, cellVal);
     }
-  } else {
-    errMsg = 'No URL configured';
+  });
+
+  let submitted = false;
+  try {
+    submitted = await submitViaIframe(parsedFormAction, formData, rowIdx);
+  } catch (ex) {
+    submitted = false;
+    log('err', 'Row ' + (rowIdx + 1) + ' error · ' + ex.message);
   }
 
-  if(ok) {
+  if (submitted) {
     importDone++;
-    const preview = Object.values(payload.row).slice(0,3).map(v=>String(v).substring(0,14)).join(' · ');
-    log('ok', 'Row ' + (importIdx+1) + ' · ' + preview);
+    const preview = colMap
+      .filter(c => !c.skip && c.entryId)
+      .slice(0, 3)
+      .map((c, j) => {
+        const actualIdx = headers.indexOf(c.col);
+        return String(row[actualIdx] !== undefined ? row[actualIdx] : '').substring(0, 14);
+      }).join(' · ');
+    log('ok', 'Row ' + (rowIdx + 1) + ' sent · ' + (preview || '(empty)'));
   } else {
+    if (!submitted && !importFail) { /* already logged */ }
     importFail++;
-    log('err', 'Row ' + (importIdx+1) + ' failed · ' + errMsg);
+    if (submitted !== false) log('err', 'Row ' + (rowIdx + 1) + ' failed');
   }
 
   importIdx++;
@@ -618,14 +818,49 @@ async function processNext() {
   $('mFail').textContent = importFail;
   $('progressLeft').textContent = importIdx + ' of ' + rows.length + ' rows';
 
-  if(startTime && importIdx > 0) {
+  if (startTime && importIdx > 0) {
     const elapsed = (Date.now() - startTime) / 1000;
     const rate = importIdx / elapsed;
     const remaining = Math.round((rows.length - importIdx) / rate);
-    $('progressEta').textContent = remaining > 0 ? 'ETA ~' + remaining + 's' : 'Almost done';
+    $('progressEta').textContent = remaining > 0 ? 'ETA ~' + remaining + 's' : 'Almost done…';
   }
 
   importTimer = setTimeout(processNext, DELAY);
+}
+
+// Iframe-based submission (avoids CORS)
+function submitViaIframe(action, formData, rowIdx) {
+  return new Promise((resolve) => {
+    // create a hidden form + iframe
+    const iframeName = 'gf_submit_' + rowIdx + '_' + Date.now();
+    const iframe = document.createElement('iframe');
+    iframe.name = iframeName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = action;
+    form.target = iframeName;
+    form.style.display = 'none';
+
+    for (const [key, value] of formData.entries()) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+
+    // Google Forms doesn't respond with success JSON; we just wait and assume OK
+    setTimeout(() => {
+      try { document.body.removeChild(iframe); } catch (_) {}
+      try { document.body.removeChild(form); } catch (_) {}
+      resolve(true);
+    }, 800);
+  });
 }
 
 function pauseImport() {
@@ -668,10 +903,10 @@ function setStatus(s) {
   const dot = $('statusDot'), txt = $('statusText');
   dot.className = 'status-dot';
   const map = {
-    idle:    ['dot-idle',    'Ready to import'],
-    running: ['dot-running', 'Importing rows…'],
+    idle:    ['dot-idle',    'Ready to submit'],
+    running: ['dot-running', 'Submitting rows…'],
     paused:  ['dot-paused',  'Paused'],
-    done:    ['dot-done',    'Import complete'],
+    done:    ['dot-done',    'All rows submitted!'],
     stopped: ['dot-stopped', 'Stopped'],
   };
   const [cls, label] = map[s] || map.idle;
@@ -681,7 +916,7 @@ function setStatus(s) {
 
 function log(type, msg) {
   const lb = $('logBody');
-  const ts = new Date().toLocaleTimeString('en-GB',{hour12:false});
+  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
   const div = document.createElement('div');
   div.className = 'log-line';
   div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-${type}">${esc(msg)}</span>`;
